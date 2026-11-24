@@ -1,0 +1,170 @@
+{
+  "bed_double": {
+    "file": "props/bed_double.png",
+    "px2x": [
+      256,
+      323
+    ],
+    "screenW1x": 128,
+    "screenH1x": 162,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "wardrobe": {
+    "file": "props/wardrobe.png",
+    "px2x": [
+      128,
+      244
+    ],
+    "screenW1x": 64,
+    "screenH1x": 122,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "table_cloth": {
+    "file": "props/table_cloth.png",
+    "px2x": [
+      256,
+      187
+    ],
+    "screenW1x": 128,
+    "screenH1x": 94,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "sofa": {
+    "file": "props/sofa.png",
+    "px2x": [
+      256,
+      153
+    ],
+    "screenW1x": 128,
+    "screenH1x": 77,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "armchair": {
+    "file": "props/armchair.png",
+    "px2x": [
+      144,
+      160
+    ],
+    "screenW1x": 72,
+    "screenH1x": 80,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "nightstand": {
+    "file": "props/nightstand.png",
+    "px2x": [
+      112,
+      155
+    ],
+    "screenW1x": 56,
+    "screenH1x": 78,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "bookshelf": {
+    "file": "props/bookshelf.png",
+    "px2x": [
+      144,
+      202
+    ],
+    "screenW1x": 72,
+    "screenH1x": 101,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "rug_red": {
+    "file": "props/rug_red.png",
+    "px2x": [
+      384,
+      227
+    ],
+    "screenW1x": 192,
+    "screenH1x": 114,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "plant_large": {
+    "file": "props/plant_large.png",
+    "px2x": [
+      128,
+      162
+    ],
+    "screenW1x": 64,
+    "screenH1x": 81,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "chest_wood": {
+    "file": "props/chest_wood.png",
+    "px2x": [
+      128,
+      119
+    ],
+    "screenW1x": 64,
+    "screenH1x": 60,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "door_closed": {
+    "file": "props/door_closed.png",
+    "px2x": [
+      128,
+      210
+    ],
+    "screenW1x": 64,
+    "screenH1x": 105,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  },
+  "painting_framed": {
+    "file": "props/painting_framed.png",
+    "px2x": [
+      144,
+      144
+    ],
+    "screenW1x": 72,
+    "screenH1x": 72,
+    "anchor": [
+      0.5,
+      1
+    ],
+    "scaleNote": "file is stored at 2x; draw at 0.5 for zoom 1"
+  }
+}

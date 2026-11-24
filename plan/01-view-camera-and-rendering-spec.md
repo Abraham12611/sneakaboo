@@ -105,7 +105,7 @@ Measure:
 | **Canvas 2D** (custom) | Zero deps, full control | Lighting and masks are slower and manual; zoomed scenes may drop FPS on phones |
 | **Phaser 3** | Batteries included (input, audio, tweens) | Heavier, opinionated, harder to keep sim separate |
 
-Default recommendation: **PixiJS v8 for the view + custom TypeScript sim**. Verify in the spike that Base44's build pipeline (Vite) bundles it without trouble.
+**Update (Nov 24, spike result, D-004):** the spike found Canvas 2D much faster than a naive Pixi adapter on throttled CPU, with a far smaller bundle. P1 uses **Canvas 2D behind the `Renderer` interface**; the Pixi adapter stays in `spike/` as an option. Details: `spike/RESULTS.md`.
 
 ## Asset implications
 - Oblique needs **consistent camera angle across every sprite**. See `plan/06-art-pipeline.md`.

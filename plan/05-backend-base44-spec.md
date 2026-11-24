@@ -54,7 +54,7 @@ Indexes (if supported): levelId + timeMs.
 `name`, `levelId`, `value`, `buildVersion`, `day`. Aggregated only. Needs a privacy review.
 
 ## Access rules
-Confirm in P6.1 how Base44 expresses per-entity permissions (read/create/update/delete for anonymous vs authenticated). Target:
+Verified: per-entity `rls` in the entity JSONC; see "Verified findings" for the working lock-down JSON. Target:
 | Entity | Anonymous read | Anonymous create | Update/Delete |
 |--------|---------------|------------------|---------------|
 | LevelRun | via function only (top N) | via function only | none |
@@ -71,7 +71,7 @@ Prefer **functions as the only door**: the client never writes entities directly
 | `getLevel` (P9) | code | Returns JSON, increments plays. |
 | `reportLevel` (P9) | code, reason | Creates a Report. Auto-hide at N reports. |
 | `getDaily` (P11) | date | Deterministic seed from date and secret salt. |
-Shared validator: keep it in a package or folder that both the frontend and functions import (see `tools/` and `levels/schema`), so rules never drift.
+Shared validator: functions cannot import from `src/` or anything outside `base44/`. Keep the canonical validator in the frontend/tools tree and **copy or build it into `base44/shared/`** (a script in `tools/`, checked in CI for drift), then import it with `../../shared/x.ts`. See "Verified findings".
 
 ### Anti-cheat (lightweight)
 - Minimum plausible time per level computed by the validator (shortest path at run speed + required searches) times 0.8. Anything faster is rejected.
@@ -95,8 +95,16 @@ When accounts arrive (cloud save, creator profiles): enable one social login via
 ## Client API wrapper
 `ApiService` hides Base44 SDK calls. Methods: `submitRun`, `getLeaderboard`, `publishLevel`, `getLevel`. All have a 4 s timeout, 1 retry, silent failure for non-essential calls. A `FEATURE_ONLINE` flag disables everything cleanly.
 
+## Verified findings (2026-11-24, details in `plan/09-base44-platform-findings.md`)
+- Functions are `base44/functions/<camelCaseName>/entry.ts` containing **plain JavaScript**, `export default async function(req)` returning a `Response`. Import the SDK as `npm:@base44/sdk@0.8.54`.
+- Anonymous call works: `POST https://sneakaboo-3e44fc26.base44.app/functions/<name>` (also `/api/functions/<name>` and `https://base44.app/api/apps/<appId>/functions/<name>`; not `app.base44.com`). CORS allows any origin.
+- Entity with no `rls` is fully open to anonymous create/read/update/delete. Lock with `"rls": { "read"|"create"|"update"|"delete": { "user_condition": { "role": "admin" } } }`. Anonymous create/update then return 403, reads return empty. Functions using `base44.asServiceRole` still write.
+- Validation, 400/429 handling and rank calculation in a function were verified (the `probeSubmit` pattern).
+- `base44 entities push` deletes remote entities missing locally. `base44 functions delete <name>` exists.
+- Shared code lives in `base44/shared/`; relative imports cannot leave `base44/`.
+
 ## Verification tasks (P0 and P6)
-- [ ] Anonymous (not logged in) visitors can call the app's functions on a public Base44 app.
-- [ ] Entity permission model understood and set to the table above.
-- [ ] The free/builder plan limits (requests, storage) known and sufficient for a public contest burst (assume thousands of runs).
+- [x] Anonymous (not logged in) visitors can call the app's functions on a public Base44 app.
+- [x] Entity permission model understood and set to the table above.
+- [ ] The free/builder plan limits (requests, storage) known and sufficient for a public contest burst (assume thousands of runs). Partly known; invocation and record caps are not documented.
 - [ ] What happens if the backend rate-limits: the client degrades gracefully.

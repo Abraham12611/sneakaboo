@@ -1,0 +1,11 @@
+title = "Sneakaboo gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Non-source folders that contain generated or reference material"
+paths = [
+  '''^mockups/''',
+  '''^\.agents/''',
+]
