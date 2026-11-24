@@ -33,3 +33,7 @@ tmp/
 .kiro/sessions/
 test-results/
 playwright-report/
+
+# Base44 (from template)
+.app.json*
+.types/
