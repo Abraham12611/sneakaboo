@@ -1,0 +1,35 @@
+# dependencies and builds
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# environment and secrets (repo is PUBLIC: never commit these)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+.base44/auth*
+.base44/credentials*
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs and temp
+*.log
+npm-debug.log*
+.tmp/
+tmp/
+*.tsbuildinfo
+
+# local tool output
+.kiro/sessions/
+test-results/
+playwright-report/
