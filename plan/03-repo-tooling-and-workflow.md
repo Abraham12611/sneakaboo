@@ -116,3 +116,13 @@ The contest says the game must be **built with Base44** and hosted on a **Base44
 - Code license: decide in P0.1 (MIT is fine for a public repo, or keep "all rights reserved" until after the contest).
 - All art and audio must be original or licensed for commercial use. Keep `CREDITS.md` current from the first asset. Include the generating model name and date for AI art.
 - Do not copy any Robbery Bob art, names, or UI. The screenshots are used only as mechanical and camera reference.
+
+## Verified scaffold facts (P0.3.1, Nov 24, 2026)
+- Base44 app id: `6b05cf93a9f18a7b3e44fc26` (not secret). Live URL: https://sneakaboo-3e44fc26.base44.app . `base44/.app.jsonc` holds the id and is gitignored. On a fresh clone run `base44 link` and pick the existing app, or set `BASE44_APP_ID`.
+- Template `backend-and-client`: React 18, Vite 6, Tailwind 3, plain JS/JSX, `@base44/sdk`, `@base44/vite-plugin`. Node 22 (.nvmrc). Frontend in `src/`, backend config in `base44/` (`config.jsonc`, `entities/*.jsonc`, `functions/<name>/entry.ts`, `agents/`).
+- We added TypeScript (strict), Vitest, ESLint, Prettier. Game code goes in `src/game` as `.ts`; the template shell stays JSX.
+- Scripts: `npm run dev | build | typecheck | lint | test | format`.
+- The template installs agent skill docs in `.agents/` and `.claude/` (Base44 CLI and platform references). Keep them: useful context for AI agents.
+- Visibility is already `public` in `base44/config.jsonc`.
+- Warning from testing: `base44 entities push` deletes remote entities that are missing locally. Always keep every entity file in `base44/entities/` before pushing.
+- See `plan/09-base44-platform-findings.md` for anonymous function and RLS results.

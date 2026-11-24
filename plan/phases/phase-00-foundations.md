@@ -29,10 +29,10 @@ Acceptance: `base44 whoami` works. A Base44 app exists for Sneakaboo. A "hello" 
 - [x] P0.2.6 `base44 visibility public` to test anonymous access (revert if desired). (2026-11-24)
 ## P0.3 Scaffold inspection and toolchain
 Acceptance: the team can run `base44 dev`, hot reload works, TypeScript and Vitest run.
-- [ ] P0.3.1 Document what the template generated (folders, framework, build tool, where entities and functions live) in `plan/03` under a new section.
+- [x] P0.3.1 Document what the template generated (folders, framework, build tool, where entities and functions live) in `plan/03` under a new section. (2026-11-24)
 - [~] P0.3.2 Run `base44 site install` and `base44 dev`; verify hot reload on a phone on the same network (or via a tunnel).
-- [ ] P0.3.3 Add TypeScript strict, ESLint, Prettier, Vitest.
-- [ ] P0.3.4 Add the folder layout from `plan/03` (empty modules with README stubs).
+- [x] P0.3.3 Add TypeScript strict, ESLint, Prettier, Vitest. (2026-11-24)
+- [x] P0.3.4 Add the folder layout from `plan/03` (empty modules with README stubs). (2026-11-24)
 - [x] P0.3.5 `base44 types generate` and confirm it works (even with no entities). (2026-11-24)
 - [~] P0.3.6 Confirm the bundler handles PixiJS and asset imports (small test).
 
