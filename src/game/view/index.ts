@@ -15,6 +15,8 @@ export * from "./viewport";
 export * from "./camera";
 export * from "./transform";
 export * from "./occlusion";
+export * from "./bounds";
+export { PieceCache, PIECE_DEV } from "./layers";
 export * from "./fog";
 export * from "./cones";
 export * from "./chunks";

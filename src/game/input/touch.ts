@@ -92,7 +92,7 @@ export class TouchControls {
       down: () => { this.interactEdge = true; this.interactHeld = true; },
       up: () => { this.interactHeld = false; },
     });
-    this.makeButton("RUN", "sk-run", "right", { bottom: "136px", right: "40px" }, {
+    this.makeButton("RUN", "sk-run", "right", { bottom: "40px", right: "calc(28px + 96px + 16px)" }, {
       down: () => { this.runHeld = true; },
       up: () => { this.runHeld = false; },
     });

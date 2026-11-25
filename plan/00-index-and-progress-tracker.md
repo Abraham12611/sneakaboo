@@ -56,7 +56,7 @@ Lanes: art/content (P4) and backend (P6) run in parallel with engine phases. Eve
 | Phase | Sub-phases | Tasks done / total | Status | Notes |
 |-------|-----------|------|--------|-------|
 | P0 | 6 | 28 / 40 | In progress | |
-| P1 | 8 | 0 / 50 | Not started | |
+| P1 | 8 | 48 / 50 | In progress | |
 | P2 | 8 | 0 / 46 | Not started | |
 | P3 | 8 | 0 / 57 | Not started | |
 | P4 | 6 | 0 / 41 | Not started | |

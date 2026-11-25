@@ -2,6 +2,7 @@ import type { LevelData } from "../sim/levelSchema";
 import type { WorldState } from "../sim/types";
 import type { FogMap } from "./fog";
 import type { Rect4 } from "./occlusion";
+import type { LabelCache, PieceCache } from "./layers";
 import type { Projection } from "./projection";
 import type { Ctx } from "./shapes";
 
@@ -22,6 +23,14 @@ export interface Env {
   view: Rect4;
   /** Interpolated player position (flat tiles). */
   pip: { x: number; y: number };
+  /** Cached baseline strips for static standing things; null draws everything directly. */
+  layers: PieceCache | null;
+  /** Cached merges of consecutive baselines with nothing dynamic between them. */
+  bands: PieceCache | null;
+  /** Pre-rendered text labels; null draws text directly. */
+  labels: LabelCache | null;
+  /** Device px per projected px of the main canvas this frame. */
+  devScale: number;
 }
 
 export function lerp(a: number, b: number, t: number): number {

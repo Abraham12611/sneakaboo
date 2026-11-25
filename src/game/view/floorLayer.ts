@@ -7,15 +7,29 @@ import { tileAt } from "./levelStatic";
 import { drawRug } from "./scene";
 import { ellipse } from "./shapes";
 
-/** Dim/darken non-visible tiles: runs of equal state per tile row. */
+/** Dim/darken non-visible tiles in the visible range: runs of equal state per tile row. */
 export function drawFloorFog(env: Env): void {
-  const { ctx, proj, fog, level, view } = env;
+  const { proj, level, view } = env;
   const tw = proj.tileScreenW;
   const th = proj.tileScreenH;
-  const x0 = Math.max(0, Math.floor(view.x0 / tw));
-  const x1 = Math.min(level.size.w - 1, Math.ceil(view.x1 / tw));
-  const y0 = Math.max(0, Math.floor(view.y0 / th));
-  const y1 = Math.min(level.size.h - 1, Math.ceil(view.y1 / th));
+  drawFloorFogTiles(
+    env,
+    Math.max(0, Math.floor(view.x0 / tw)),
+    Math.max(0, Math.floor(view.y0 / th)),
+    Math.min(level.size.w - 1, Math.ceil(view.x1 / tw)),
+    Math.min(level.size.h - 1, Math.ceil(view.y1 / th)),
+  );
+}
+
+/** Fog overlay for the inclusive tile range. */
+export function drawFloorFogTiles(env: Env, x0: number, y0: number, x1: number, y1: number): void {
+  const { ctx, proj, fog, level } = env;
+  const tw = proj.tileScreenW;
+  const th = proj.tileScreenH;
+  x0 = Math.max(0, x0);
+  y0 = Math.max(0, y0);
+  x1 = Math.min(level.size.w - 1, x1);
+  y1 = Math.min(level.size.h - 1, y1);
   for (let y = y0; y <= y1; y++) {
     let x = x0;
     while (x <= x1) {
@@ -33,7 +47,6 @@ export function drawFloorFog(env: Env): void {
   }
   ctx.globalAlpha = 1;
 }
-
 export function drawHomeBase(env: Env): void {
   const { ctx, proj, level, t } = env;
   const [hx, hy, hw, hh] = level.home;
@@ -54,23 +67,67 @@ export function drawHomeBase(env: Env): void {
 }
 
 export function drawRugs(env: Env): void {
+  drawRugsIn(env, -Infinity, -Infinity, Infinity, Infinity);
+}
+
+/** Rugs whose footprint overlaps the projected rect. */
+export function drawRugsIn(env: Env, x0: number, y0: number, x1: number, y1: number): void {
+  const { proj } = env;
   for (const o of env.world.objects) {
     if (o.height > 0.02 || o.def.type === "door") continue;
     const d = o.def;
+    if (proj.px(d.x + d.w) <= x0 || proj.px(d.x) >= x1 || proj.py(d.y + d.h) <= y0 || proj.py(d.y) >= y1) continue;
     const st = env.fog.at(Math.floor(d.x + d.w / 2), Math.floor(d.y + d.h / 2));
     drawRug(env, o, st);
   }
 }
 
-const polyBuf: number[] = [];
+interface ConeEntry {
+  x: number;
+  y: number;
+  facing: number;
+  range: number;
+  angle: number;
+  doors: number;
+  grid: unknown;
+  n: number;
+  pts: number[];
+}
+/** Cone polygons per seeker, recast only when the seeker moved/turned or a door changed (raycasts are the costly part). */
+const coneCache = new Map<string, ConeEntry>();
+
+function doorSignature(env: Env): number {
+  let h = 17;
+  for (const o of env.world.objects) if (o.def.type === "door") h = (Math.imul(h, 31) + (o.state === "open" ? 1 : 2)) | 0;
+  return h;
+}
+
 export function drawCones(env: Env): void {
   const { ctx, proj, world, alpha, fog } = env;
+  let doors: number | null = null;
   for (const s of world.seekers) {
     if (s.state === "sleep" || s.coneRange <= 0 || s.coneAngle <= 0) continue;
     const x = lerp(s.px, s.x, alpha);
     const y = lerp(s.py, s.y, alpha);
     if (fog.at(Math.floor(x), Math.floor(y)) !== FOG_VISIBLE) continue;
-    const n = conePolygon(world.grid, x, y, s.facing, s.coneRange, s.coneAngle, polyBuf);
+    doors ??= doorSignature(env);
+    let c = coneCache.get(s.id);
+    if (!c) {
+      c = { x: NaN, y: 0, facing: 0, range: 0, angle: 0, doors: 0, grid: null, n: 0, pts: [] };
+      coneCache.set(s.id, c);
+    }
+    if (c.x !== x || c.y !== y || c.facing !== s.facing || c.range !== s.coneRange || c.angle !== s.coneAngle || c.doors !== doors || c.grid !== world.grid) {
+      c.n = conePolygon(world.grid, x, y, s.facing, s.coneRange, s.coneAngle, c.pts);
+      c.x = x;
+      c.y = y;
+      c.facing = s.facing;
+      c.range = s.coneRange;
+      c.angle = s.coneAngle;
+      c.doors = doors;
+      c.grid = world.grid;
+    }
+    const n = c.n;
+    const polyBuf = c.pts;
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const wx = polyBuf[i * 2]!;
@@ -109,7 +166,7 @@ export function drawNoise(env: Env): void {
 
 /** World-space UI: seeker alert bubbles/rings, HOME label, unknown-room name hints. Counter-scaled. */
 export function drawWorldUi(env: Env): void {
-  const { ctx, proj, world, level, fog, alpha, uiScale, t } = env;
+  const { ctx, proj, world, level, fog, alpha, uiScale, t, labels } = env;
   const u = proj.tileScreenW / 64;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -142,18 +199,23 @@ export function drawWorldUi(env: Env): void {
     }
     ctx.restore();
   }
-  // HOME label
+  // HOME label (badge 52x18 label px, text 2 px above its centre)
   {
     const [hx, hy, hw] = level.home;
-    ctx.save();
-    ctx.translate(proj.px(hx + hw / 2), proj.py(hy) - 6);
-    ctx.scale(uiScale, uiScale);
-    ctx.fillStyle = "rgba(20,80,40,0.85)";
-    ctx.fillRect(-26, -20, 52, 18);
-    ctx.fillStyle = "#c9ffd9";
-    ctx.font = "bold 12px sans-serif";
-    ctx.fillText("HOME", 0, -11 + Math.sin(t * 2.4) * 0.6);
-    ctx.restore();
+    const cx = proj.px(hx + hw / 2);
+    const cy = proj.py(hy) - 6 - 11 * uiScale;
+    if (labels) labels.draw(ctx, "HOME", "bold 12px sans-serif", "#c9ffd9", cx, cy + Math.sin(t * 2.4) * 0.6 * uiScale, uiScale, env.devScale, { color: "rgba(20,80,40,0.85)", w: 52, h: 18 });
+    else {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(uiScale, uiScale);
+      ctx.fillStyle = "rgba(20,80,40,0.85)";
+      ctx.fillRect(-26, -9, 52, 18);
+      ctx.fillStyle = "#c9ffd9";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText("HOME", 0, Math.sin(t * 2.4) * 0.6);
+      ctx.restore();
+    }
   }
   // unknown room hints
   for (const r of level.rooms) {
@@ -165,15 +227,18 @@ export function drawWorldUi(env: Env): void {
     const sx = proj.px(cx);
     const sy = proj.py(cy);
     if (sx < env.view.x0 || sx > env.view.x1 || sy < env.view.y0 || sy > env.view.y1) continue;
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.scale(uiScale, uiScale);
     ctx.globalAlpha = 0.35;
-    ctx.fillStyle = "#8a91ad";
-    ctx.font = "bold 14px sans-serif";
-    ctx.fillText(r.id.toUpperCase(), 0, 0);
-    ctx.restore();
-  }
-  ctx.textAlign = "start";
+    if (labels) labels.draw(ctx, r.id.toUpperCase(), "bold 14px sans-serif", "#8a91ad", sx, sy, uiScale, env.devScale);
+    else {
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.scale(uiScale, uiScale);
+      ctx.fillStyle = "#8a91ad";
+      ctx.font = "bold 14px sans-serif";
+      ctx.fillText(r.id.toUpperCase(), 0, 0);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }  ctx.textAlign = "start";
   ctx.textBaseline = "alphabetic";
 }

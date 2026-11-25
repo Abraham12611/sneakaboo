@@ -53,10 +53,10 @@ describe("draw-op benchmark (mock context)", () => {
         const r = walk(projection, zoom);
         const avg = r.ops.reduce((a, b) => a + b, 0) / r.ops.length;
         const max = Math.max(...r.ops);
-        console.log(`[bench] ${projection} z=${zoom}: avg ${avg.toFixed(0)} ops/frame, max ${max}, ${(r.ms / FRAMES).toFixed(3)} ms/frame JS (mock ctx), ${r.builds} chunk canvases`);
+        console.log(`[bench] ${projection} z=${zoom}: avg ${avg.toFixed(0)} ops/frame, max ${max}, ${(r.ms / FRAMES).toFixed(3)} ms/frame JS (mock ctx), ${r.builds} offscreen canvases (floor chunks + layer pieces)`);
         expect(avg).toBeLessThan(BUDGET_AVG_OPS);
         expect(max).toBeLessThan(BUDGET_MAX_OPS);
-        expect(r.builds).toBeLessThan(40); // chunk cache is not rebuilt every frame
+        expect(r.builds).toBeLessThan(160); // floor chunks + stand-layer pieces, never rebuilt every frame
       });
     }
   }

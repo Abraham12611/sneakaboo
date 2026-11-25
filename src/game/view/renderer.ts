@@ -3,15 +3,17 @@ import type { GameView, ProjectionKind, ViewOptions } from "../contracts";
 import type { LevelData } from "../sim/levelSchema";
 import type { SimEvent, ViewControls, WorldState } from "../sim/types";
 import { Camera, clampZoom, DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM } from "./camera";
-import { cacheScaleStep, CHUNK, chunkRange, type CanvasFactory, FloorChunks } from "./chunks";
-import { countingContext, drawDebugText, drawDebugWorld } from "./debug";
+import { cacheScaleStep, type CanvasFactory, FloorChunks } from "./chunks";
+import { countingContext, DebugTextCache, drawDebugNoise } from "./debug";
 import type { Env } from "./env";
 import { lerp } from "./env";
-import { drawCones, drawFloorFog, drawHomeBase, drawNoise, drawRugs, drawWorldUi } from "./floorLayer";
+import { drawCachedRegions } from "./floorCache";
+import { drawCones, drawHomeBase, drawNoise, drawWorldUi } from "./floorLayer";
 import { FogMap } from "./fog";
 import { drawThreatArrows, Minimap, minimapOrigin } from "./hud";
 import { makeProjection, type Projection } from "./projection";
 import { Scene } from "./scene";
+import { HASH_SEED, LabelCache, mixHash, PieceCache } from "./layers";
 import type { Ctx } from "./shapes";
 import { cssToWorld, visibleRect } from "./transform";
 import { computeViewport, LOGICAL_H, LOGICAL_W, type Viewport, worldUiScale } from "./viewport";
@@ -27,7 +29,7 @@ export interface GameViewExt extends GameView {
   /** Seconds left of the peek cooldown (0 = ready). For the HUD. */
   getPeekCooldown(): number;
   /** Stats of the last frame. */
-  getStats(): { fps: number; frameMs: number; drawOps: number };
+  getStats(): { fps: number; frameMs: number; drawOps: number; sections: Record<string, number> };
 }
 
 const settings = { threatArrows: true, minimap: true };
@@ -67,6 +69,12 @@ export class GameViewImpl implements GameViewExt {
   private fog: FogMap | null = null;
   private chunks: FloorChunks | null = null;
   private readonly scene = new Scene();
+  private readonly layers: PieceCache;
+  private readonly bands: PieceCache;
+  private readonly floorCache: PieceCache;
+  private readonly debugCache: PieceCache;
+  private readonly debugText: DebugTextCache;
+  private readonly labels: LabelCache;
   private readonly minimap: Minimap;
   private readonly factory: CanvasFactory;
   private readonly now: () => number;
@@ -77,6 +85,10 @@ export class GameViewImpl implements GameViewExt {
   private fps = 60;
   private frameMs = 0;
   private lastOps = 0;
+  private frameNo = 0;
+  /** Debug only: EMA of ms per render section (floor, floorLayers, scene, ui, hud). */
+  private readonly secMs: Record<string, number> = {};
+  private secT = 0;
   private lastPip = { x: 0, y: 0 };
   private readonly onSkip = (e: Event) => {
     if ((e as KeyboardEvent).repeat) return;
@@ -97,6 +109,12 @@ export class GameViewImpl implements GameViewExt {
     this.factory = deps.createCanvas ?? defaultFactory(canvas);
     this.now = deps.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
     this.minimap = new Minimap(this.factory);
+    this.layers = new PieceCache(this.factory);
+    this.bands = new PieceCache(this.factory, 2, 8_000_000);
+    this.floorCache = new PieceCache(this.factory, 2, 8_000_000);
+    this.debugCache = new PieceCache(this.factory, 2, 6_000_000);
+    this.debugText = new DebugTextCache(this.factory);
+    this.labels = new LabelCache(this.factory);
     const cssW = canvas.clientWidth || canvas.width || LOGICAL_W;
     const cssH = canvas.clientHeight || canvas.height || LOGICAL_H;
     this.vp = computeViewport(cssW, cssH, 1);
@@ -115,6 +133,7 @@ export class GameViewImpl implements GameViewExt {
     this.fog = new FogMap(level, world.grid.roomIndex);
     this.chunks = new FloorChunks(level, world.grid, this.factory);
     this.scene.setLevel(level);
+    this.clearCaches();
     this.minimap.invalidate();
     const cam = this.cam;
     cam.setLimits(level.camera.minZoom ?? DEFAULT_MIN_ZOOM, level.camera.maxZoom ?? DEFAULT_MAX_ZOOM);
@@ -141,12 +160,14 @@ export class GameViewImpl implements GameViewExt {
     }
     this.minimap.invalidate();
     this.chunks?.clear();
+    this.clearCaches();
   }
 
   setProjection(kind: ProjectionKind): void {
     if (kind === this.proj.name) return;
     this.proj = makeProjection(kind);
     this.chunks?.clear();
+    this.clearCaches();
     if (this.level) this.cam.clamp(this.level.size.w, this.level.size.h, this.proj);
   }
 
@@ -190,7 +211,7 @@ export class GameViewImpl implements GameViewExt {
     return this.cam.peekCooldown;
   }
   getStats() {
-    return { fps: this.fps, frameMs: this.frameMs, drawOps: this.lastOps };
+    return { fps: this.fps, frameMs: this.frameMs, drawOps: this.lastOps, sections: this.secMs };
   }
 
   dispose(): void {
@@ -199,8 +220,17 @@ export class GameViewImpl implements GameViewExt {
       window.removeEventListener("pointerdown", this.onSkip);
     }
     this.chunks?.clear();
+    this.clearCaches();
     this.level = null;
     this.world = null;
+  }
+
+  private clearCaches(): void {
+    this.layers.clear();
+    this.bands.clear();
+    this.floorCache.clear();
+    this.debugCache.clear();
+    this.labels.clear();
   }
 
   /* ------------------------------- frame ------------------------------- */
@@ -246,10 +276,13 @@ export class GameViewImpl implements GameViewExt {
     cam.update(dt, pip.x, pip.y, mx, my, level.size.w, level.size.h, proj);
     this.lastPip = pip;
 
-    this.ctx = this.debug ? countingContext(this.ctxRaw, this.counter) : this.ctxRaw;
+    // The counting Proxy is expensive, so it only wraps the context on every 30th debug frame.
+    const count = this.debug && this.frameNo % 30 === 0;
+    this.frameNo++;
+    this.ctx = count ? countingContext(this.ctxRaw, this.counter) : this.ctxRaw;
     this.counter.ops = 0;
     this.render(world, level, fog, chunks, a, dt, pip);
-    this.lastOps = this.counter.ops;
+    if (count) this.lastOps = this.counter.ops;
 
     const ms = this.now() - t0;
     this.frameMs = this.frameMs * 0.9 + ms * 0.1;
@@ -260,6 +293,12 @@ export class GameViewImpl implements GameViewExt {
   private coversViewport(level: LevelData): boolean {
     const v = visibleRect(this.proj, this.cam);
     return v.x0 >= 0 && v.y0 >= 0 && v.x1 <= level.size.w * this.proj.tileScreenW && v.y1 <= level.size.h * this.proj.tileScreenH;
+  }
+
+  private sec(name: string): void {
+    const n = this.now();
+    this.secMs[name] = (this.secMs[name] ?? 0) * 0.9 + (n - this.secT) * 0.1;
+    this.secT = n;
   }
 
   private render(world: WorldState, level: LevelData, fog: FogMap, chunks: FloorChunks, alpha: number, dt: number, pip: { x: number; y: number }): void {
@@ -300,6 +339,13 @@ export class GameViewImpl implements GameViewExt {
       Math.round(vp.offX * dpr + s * (LOGICAL_W / 2 + shx) - s * z * proj.px(cam.x)),
       Math.round(vp.offY * dpr + s * (LOGICAL_H / 2 + shy) - s * z * proj.py(cam.y)),
     );
+    // While the zoom is animating use a coarse step (few rebuilds); once settled cache at the exact scale so the blit is 1:1.
+    const settled = Math.abs(z - cam.effectiveZoomTarget()) < 0.002;
+    const step = settled ? Math.round(s * z * 1000) / 1000 : cacheScaleStep(s * z);
+    this.layers.begin(proj.name, step);
+    this.bands.begin(proj.name, step);
+    this.floorCache.begin(proj.name, step);
+    if (this.debug) this.debugCache.begin(proj.name, step);
     const view = visibleRect(proj, cam, 8);
     const env: Env = {
       ctx,
@@ -313,40 +359,43 @@ export class GameViewImpl implements GameViewExt {
       alpha,
       view,
       pip,
+      layers: this.layers,
+      bands: this.bands,
+      labels: this.labels,
+      devScale: s * z,
     };
 
+    if (this.debug) this.secT = this.now();
     // 1. floor chunks (cached)
-    // While the zoom is animating use a coarse step (few rebuilds); once settled cache at the exact scale so the blit is 1:1.
-    const settled = Math.abs(z - cam.effectiveZoomTarget()) < 0.002;
-    const step = settled ? Math.round(s * z * 1000) / 1000 : cacheScaleStep(s * z);
     chunks.prune(proj.name, step);
     const tw = proj.tileScreenW;
     const th = proj.tileScreenH;
-    const r = chunkRange(Math.floor(view.x0 / tw), Math.floor(view.y0 / th), Math.floor(view.x1 / tw), Math.floor(view.y1 / th), level.size.w, level.size.h);
     const sz = s * z;
-    for (let cy = r.cy0; cy <= r.cy1; cy++) {
-      for (let cx = r.cx0; cx <= r.cx1; cx++) {
-        const img = chunks.get(cx, cy, proj, step) as CanvasImageSource & { width: number; height: number };
-        // Align the blit to whole device pixels so it is a 1:1 copy when the cache step equals the scale.
-        const ox = Math.round(proj.px(cx * CHUNK) * sz) / sz;
-        const oy = Math.round(proj.py(cy * CHUNK) * sz) / sz;
-        ctx.drawImage(img, ox, oy, img.width / step, img.height / step);
-      }
-    }
-    // 2. floor-plane layers
-    drawFloorFog(env);
+    const vx0 = Math.floor(view.x0 / tw);
+    const vy0 = Math.floor(view.y0 / th);
+    const vx1 = Math.floor(view.x1 / tw);
+    const vy1 = Math.floor(view.y1 / th);
+    // floor composites: chunks + fog + rugs, repainted only when the fog changes
+    drawCachedRegions(env, this.floorCache, fog.version, vx0, vy0, vx1, vy1, sz, { chunks, step });
+    if (this.debug) this.sec("floor");
+    // 2. dynamic floor-plane layers
     drawHomeBase(env);
-    drawRugs(env);
     drawCones(env);
     drawNoise(env);
+    if (this.debug) this.sec("floorLayers");
     // 3. occlusion tween, then the y-sorted standers
     this.scene.updateOcclusion(env, dt);
     this.scene.draw(env, dt);
+    if (this.debug) this.sec("scene");
     // 4. world-space UI
     drawWorldUi(env);
-    if (this.debug) drawDebugWorld(env);
-
-    // 5. screen-space overlays (still clipped to the letterbox)
+    if (this.debug) {
+      let sig = mixHash(HASH_SEED, fog.version);
+      for (const o of world.objects) if (o.def.type === "door") sig = mixHash(sig, o.state === "open" ? 1 : 2);
+      drawCachedRegions(env, this.debugCache, sig, vx0, vy0, vx1, vy1, sz, null);
+      drawDebugNoise(env);
+    }
+    if (this.debug) this.sec("worldUi+debugWorld");    // 5. screen-space overlays (still clipped to the letterbox)
     ctx.setTransform(s, 0, 0, s, vp.offX * dpr, vp.offY * dpr);
     if (settings.threatArrows) drawThreatArrows(ctx, proj, cam, world, fog, pip, alpha);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -355,7 +404,7 @@ export class GameViewImpl implements GameViewExt {
       this.minimap.draw(ctx, o.x, o.y, dpr, level, fog, world.grid.roomIndex, pip, env.t);
     }
     if (this.debug) {
-      drawDebugText(ctx, vp.offX + 8, vp.offY + 8, {
+      this.debugText.draw(ctx, vp.offX + 8, vp.offY + 8, {
         fps: this.fps,
         frameMs: this.frameMs,
         drawOps: this.lastOps,
@@ -364,8 +413,9 @@ export class GameViewImpl implements GameViewExt {
         items: this.scene.stats.items,
         chunks: chunks.size,
         chunkBuilds: chunks.builds,
-      });
+      }, this.now(), dpr);
     }
+    if (this.debug) this.sec("hud+debugText");
     ctx.restore();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }

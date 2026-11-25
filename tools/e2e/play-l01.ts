@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke: start the Vite dev server, open the game in headless Chromium,
  * walk the validated route of L01 with real keyboard events, and check the result.
- * Run: npx tsx tools/e2e/play-l01.ts   (needs spike/node_modules for Playwright)
+ * Run: npx tsx tools/e2e/play-l01.ts [--out=dir]   (needs spike/node_modules for Playwright; default dir docs/screenshots/p1-e2e)
  */
 import { createServer } from "vite";
 import fs from "node:fs";
@@ -13,7 +13,8 @@ import { computeRoute } from "../validate-levels/validate";
 const require = createRequire(path.resolve("spike/package.json"));
 const { chromium } = require("playwright");
 
-const OUT = path.resolve("docs/screenshots/p1-e2e");
+const outArg = process.argv.find((a) => a.startsWith("--out="))?.slice(6);
+const OUT = path.resolve(outArg ?? "docs/screenshots/p1-e2e");
 fs.mkdirSync(OUT, { recursive: true });
 
 const level = parseLevel(JSON.parse(fs.readFileSync("levels/L01.json", "utf8")));

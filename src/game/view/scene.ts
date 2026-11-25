@@ -1,39 +1,16 @@
 /** Y-sorted "standing" layer: walls, objects, doors, Pip and seekers, plus occlusion fade. */
 import type { LevelData } from "../sim/levelSchema";
 import type { ObjectState } from "../sim/types";
+import { BOUNDS_PAD, objectRect } from "./bounds";
 import { characterBounds, drawPip, drawSeeker, drawSilhouette, seekerLook } from "./characters";
 import type { Env } from "./env";
 import { lerp } from "./env";
 import { type FogState, fogColor, FOG_VISIBLE } from "./fog";
 import { buildWallRuns, TALL_WALL, type WallRun, wallHeightAt } from "./levelStatic";
-import { OCCLUDE_RADIUS, occlusionTarget, rectsOverlap, tweenAlpha } from "./occlusion";
+import { OCCLUDE_TIME_CONST, occlusionTarget, type Rect4, rectsOverlap, SILHOUETTE_MIN_COVER_ALPHA, silhouetteStrength, tweenAlpha } from "./occlusion";
+import { HASH_SEED, mixHash, type Piece } from "./layers";
 import { shade } from "./palette";
 import { type Ctx, drawBox, ellipse, roundRectPath } from "./shapes";
-
-const K_WALL = 0;
-const K_OBJ = 1;
-const K_DOOR = 2;
-const K_SEEKER = 3;
-const K_PLAYER = 4;
-
-interface Item {
-  kind: number;
-  base: number;
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-  idx: number;
-  tx: number;
-  ty: number;
-  len: number;
-  state: FogState;
-  alpha: number;
-  x: number;
-  y: number;
-  moving: boolean;
-}
-const newItem = (): Item => ({ kind: 0, base: 0, x0: 0, y0: 0, x1: 0, y1: 0, idx: 0, tx: 0, ty: 0, len: 0, state: FOG_VISIBLE, alpha: 1, x: 0, y: 0, moving: false });
 
 export const OBJECT_COLORS: Record<string, string> = {
   bed: "#6f9bd6", wardrobe: "#7b5a3c", closet: "#8b6b4a", sofa: "#b5587e", armchair: "#a6506f", chair: "#a67c52",
@@ -52,27 +29,93 @@ const WALL_COLORS = {
   hedge: { top: "#58a84d", face: "#33743a", flat: "#3f8a3f" },
 } as const;
 
+const K_WALL = 0;
+const K_OBJ = 1;
+const K_DOOR = 2;
+const K_SEEKER = 3;
+const K_PLAYER = 4;
+
+interface Item {
+  kind: number;
+  base: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  idx: number;
+  /** Walls: first tile and count drawn by this item; `u0`/`ulen` is the cached unit (same fog state) it is cut from. */
+  tx: number;
+  ty: number;
+  len: number;
+  u0: number;
+  ulen: number;
+  state: FogState;
+  alpha: number;
+  x: number;
+  y: number;
+  moving: boolean;
+  canopy: boolean;
+  /** Drawn directly every frame (characters, fading things) instead of from a cached piece. */
+  dyn: boolean;
+  /** Content signature of a static thing (what it looks like). */
+  sig: number;
+}
+const newItem = (): Item => ({
+  kind: 0, base: 0, x0: 0, y0: 0, x1: 0, y1: 0, idx: 0, tx: 0, ty: 0, len: 0, u0: 0, ulen: 0,
+  state: FOG_VISIBLE, alpha: 1, x: 0, y: 0, moving: false, canopy: false, dyn: false, sig: 0,
+});
+
+/** One baseline of static things in the sorted list, with its resolved cached pieces. */
+interface Group {
+  i: number;
+  j: number;
+  /** All visible pieces are cached (else draw the baseline directly). */
+  ok: boolean;
+  /** Has a visible fading thing (drawn on top, so a band must end here). */
+  hasDyn: boolean;
+  pieces: Piece[];
+}
+
+/** A run of wall tiles with the same fog state: the unit that gets one cached sprite. */
+interface WallUnit {
+  ri: number;
+  u0: number;
+  len: number;
+  state: FogState;
+}
+
+const byBaseKind = (a: Item, b: Item) => a.base - b.base || a.kind - b.kind;
+const inView = (r: Rect4, v: Rect4) => !(r.x1 < v.x0 || r.x0 > v.x1 || r.y1 < v.y0 || r.y0 > v.y1);
+
 export class Scene {
   private items: Item[] = [];
   private sortBuf: Item[] = [];
   private count = 0;
   private runs: WallRun[] = [];
+  private units: WallUnit[] = [];
+  private unitsVersion = -1;
   private wallFade: Float32Array = new Float32Array(0);
   private active = new Set<number>();
-  private objFade = new Map<string, number>();
+  private objFade: Float32Array = new Float32Array(0);
+  private objFading = 0;
   private seekerOcc = new Map<string, number>();
   private pipOcc = 0;
   private level: LevelData | null = null;
   private tmpTargets = new Map<number, number>();
+  private readonly pRect: Rect4 = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  private readonly tRect: Rect4 = { x0: 0, y0: 0, x1: 0, y1: 0 };
   /** Draw statistics for the debug overlay and benchmarks. */
-  stats = { items: 0, wallSegs: 0 };
+  stats = { items: 0, wallSegs: 0, pieces: 0, direct: 0 };
 
   setLevel(level: LevelData): void {
     this.level = level;
     this.runs = buildWallRuns(level);
+    this.units = [];
+    this.unitsVersion = -1;
     this.wallFade = new Float32Array(level.size.w * level.size.h).fill(1);
+    this.objFade = new Float32Array(level.objects.length).fill(1);
+    this.objFading = 0;
     this.active.clear();
-    this.objFade.clear();
     this.seekerOcc.clear();
     this.pipOcc = 0;
   }
@@ -81,9 +124,19 @@ export class Scene {
     return this.runs.length;
   }
 
-  /** 0..1 amount of cover currently over the player (drives his outline). */
+  /** 0..1 strength of the marker on the player (how much of a cover is over him). */
   get playerCover(): number {
     return this.pipOcc;
+  }
+
+  /** Current fade alpha of an object (1 = opaque). For tests and debugging. */
+  objectAlpha(index: number): number {
+    return this.objFade[index] ?? 1;
+  }
+
+  /** Current fade alpha of a wall tile. */
+  wallAlpha(tx: number, ty: number): number {
+    return this.level ? (this.wallFade[ty * this.level.size.w + tx] ?? 1) : 1;
   }
 
   private nextItem(): Item {
@@ -96,44 +149,41 @@ export class Scene {
     return it;
   }
 
-  /** Update fade tweens for things in front of the player. Oblique only. */
+  /**
+   * Update fade tweens. Everything that sorts after the player (baseline further south) and whose screen rect
+   * overlaps his rect fades, however far away it stands. Walls and low furniture only count in the oblique
+   * view; tree canopies count in both.
+   */
   updateOcclusion(env: Env, dt: number): void {
     const { proj, level, world } = env;
     if (!this.level) return;
     const px = env.pip.x;
     const py = env.pip.y;
+    const ob = proj.heightPx > 0;
+    const pr = characterBounds(proj, proj.px(px), proj.py(py), 1, this.pRect);
     let minAlpha = 1;
-    if (proj.heightPx === 0) {
-      for (const k of this.active) this.wallFade[k] = 1;
-      this.active.clear();
-      this.objFade.clear();
-      this.pipOcc = 0;
-      return;
-    }
-    const T = proj.tileScreenW;
-    const u = T / 64;
-    const pr = { x0: proj.px(px) - 17 * u, x1: proj.px(px) + 17 * u, y0: proj.py(py) - 58 * u, y1: proj.py(py) + 4 * u };
-    // wall tiles in front of the player
+    // wall tiles
     const targets = this.tmpTargets;
     targets.clear();
-    const w = level.size.w;
-    const bx0 = Math.max(0, Math.floor(px - OCCLUDE_RADIUS - 1));
-    const bx1 = Math.min(w - 1, Math.ceil(px + OCCLUDE_RADIUS + 1));
-    const by0 = Math.max(0, Math.floor(py));
-    const by1 = Math.min(level.size.h - 1, Math.ceil(py + OCCLUDE_RADIUS + 1));
-    const tr = { x0: 0, y0: 0, x1: 0, y1: 0 };
-    for (let ty = by0; ty <= by1; ty++) {
-      for (let tx = bx0; tx <= bx1; tx++) {
-        const h = wallHeightAt(level, tx, ty);
-        if (h <= 0) continue;
-        tr.x0 = proj.px(tx);
-        tr.x1 = proj.px(tx + 1);
-        tr.y0 = proj.py(ty, h);
-        tr.y1 = proj.py(ty + 1, 0);
-        const nx = Math.max(tx, Math.min(px, tx + 1));
-        const ny = Math.max(ty, Math.min(py, ty + 1));
-        const dist = Math.hypot(nx - px, ny - py);
-        targets.set(ty * w + tx, occlusionTarget(dist, ty + 1 > py, rectsOverlap(tr, pr)));
+    if (ob) {
+      const w = level.size.w;
+      const T = proj.tileScreenW;
+      const th = proj.tileScreenH;
+      const bx0 = Math.max(0, Math.floor(pr.x0 / T));
+      const bx1 = Math.min(w - 1, Math.floor(pr.x1 / T));
+      const by0 = Math.max(0, Math.floor(py));
+      const by1 = Math.min(level.size.h - 1, Math.floor((pr.y1 + TALL_WALL * proj.heightPx) / th));
+      const tr = this.tRect;
+      for (let ty = by0; ty <= by1; ty++) {
+        for (let tx = bx0; tx <= bx1; tx++) {
+          const h = wallHeightAt(level, tx, ty);
+          if (h <= 0) continue;
+          tr.x0 = proj.px(tx);
+          tr.x1 = proj.px(tx + 1);
+          tr.y0 = proj.py(ty, h);
+          tr.y1 = proj.py(ty + 1, 0);
+          targets.set(ty * w + tx, occlusionTarget(ty + 1 > py, rectsOverlap(tr, pr)));
+        }
       }
     }
     for (const k of this.active) if (!targets.has(k)) targets.set(k, 1);
@@ -146,190 +196,437 @@ export class Scene {
         if (v < minAlpha) minAlpha = v;
       } else this.active.delete(k);
     }
-    // objects
-    for (const o of world.objects) {
-      const hgt = o.height;
-      if (hgt <= 0.02) continue;
+    // objects (index = position in world.objects)
+    const rect = this.tRect;
+    let fading = 0;
+    for (let i = 0; i < world.objects.length; i++) {
+      const o = world.objects[i]!;
       const d = o.def;
-      const orect = { x0: proj.px(d.x), x1: proj.px(d.x + d.w), y0: proj.py(d.y, hgt), y1: proj.py(d.y + d.h, 0) };
-      const nx = Math.max(d.x, Math.min(px, d.x + d.w));
-      const ny = Math.max(d.y, Math.min(py, d.y + d.h));
-      const dist = Math.hypot(nx - px, ny - py);
-      const tgt = occlusionTarget(dist, d.y + d.h > py, rectsOverlap(orect, pr));
-      const cur = this.objFade.get(o.id) ?? 1;
+      const isDoor = d.type === "door";
+      if (o.height <= 0.02 && !isDoor) continue;
+      if (!ob && d.type !== "tree") continue;
+      const cur = this.objFade[i] ?? 1;
+      let tgt = 1;
+      if (d.y + d.h > py) {
+        objectRect(proj, o, rect, isDoor ? Math.max(o.height, 1.4) : o.height);
+        tgt = occlusionTarget(true, rectsOverlap(rect, pr));
+      }
+      if (tgt === 1 && cur === 1) continue;
       const v = tweenAlpha(cur, tgt, dt);
-      this.objFade.set(o.id, v);
-      if (v < minAlpha) minAlpha = v;
+      this.objFade[i] = v;
+      if (v < 1) {
+        fading++;
+        if (v < minAlpha) minAlpha = v;
+      }
     }
-    const cover = (1 - minAlpha) / 0.65;
-    this.pipOcc = Math.max(0, Math.min(1, cover));
+    this.objFading = fading;
+    this.pipOcc = silhouetteStrength(minAlpha);
   }
 
-  /** Collect, sort and draw all standing things. */
-  draw(env: Env, dt: number): void {
-    const { ctx, proj, world, level, fog, view } = env;
-    this.count = 0;
-    this.stats.wallSegs = 0;
-    const T = proj.tileScreenW;
-    const w = level.size.w;
-    // walls
-    const tx0 = Math.max(0, Math.floor(view.x0 / T) - 1);
-    const tx1 = Math.min(w - 1, Math.ceil(view.x1 / T) + 1);
+  /** Wall units (same-fog runs), rebuilt only when the fog changed. */
+  private refreshUnits(env: Env): void {
+    if (this.unitsVersion === env.fog.version) return;
+    this.unitsVersion = env.fog.version;
+    const units = this.units;
+    units.length = 0;
+    const fog = env.fog;
     for (let ri = 0; ri < this.runs.length; ri++) {
       const run = this.runs[ri]!;
-      const rx0 = proj.px(run.x);
-      const rx1 = proj.px(run.x + run.len);
-      const ry0 = proj.py(run.y, run.height);
-      const ry1 = proj.py(run.y + 1, 0);
-      if (rx1 < view.x0 || rx0 > view.x1 || ry1 < view.y0 || ry0 > view.y1) continue;
-      const a = Math.max(run.x, tx0);
-      const b = Math.min(run.x + run.len - 1, tx1);
-      let s = a;
-      while (s <= b) {
+      const end = run.x + run.len;
+      let s = run.x;
+      while (s < end) {
         const st = fog.at(s, run.y);
-        const fd = this.active.size ? (this.wallFade[run.y * w + s] ?? 1) : 1;
         let e = s;
-        while (e + 1 <= b && fog.at(e + 1, run.y) === st && (this.active.size ? (this.wallFade[run.y * w + e + 1] ?? 1) : 1) === fd) e++;
-        const it = this.nextItem();
-        it.kind = K_WALL;
-        it.base = run.y + 1;
-        it.x0 = proj.px(s);
-        it.x1 = proj.px(e + 1);
-        it.y0 = ry0;
-        it.y1 = ry1;
-        it.idx = ri;
-        it.tx = s;
-        it.ty = run.y;
-        it.len = e - s + 1;
-        it.state = st;
-        it.alpha = fd;
-        this.stats.wallSegs++;
+        while (e + 1 < end && fog.at(e + 1, run.y) === st) e++;
+        units.push({ ri, u0: s, len: e - s + 1, state: st });
         s = e + 1;
       }
     }
+  }
+
+  /**
+   * Collect, sort and draw all standing things. Static things (alpha 1) are blitted from cached baseline
+   * strips (`env.layers`); characters and fading things are drawn directly between them in y order.
+   */
+  draw(env: Env, dt: number): void {
+    const { ctx, proj, world, level, fog, view } = env;
+    this.count = 0;
+    const st = this.stats;
+    st.wallSegs = 0;
+    st.pieces = 0;
+    st.direct = 0;
+    const w = level.size.w;
+    const anyWallFade = this.active.size > 0;
+    // walls: every unit (static things are not culled one by one; their cached pieces are)
+    this.refreshUnits(env);
+    for (let ui = 0; ui < this.units.length; ui++) {
+      const u = this.units[ui]!;
+      const run = this.runs[u.ri]!;
+      const ry0 = proj.py(run.y, run.height);
+      const ry1 = proj.py(run.y + 1, 0);
+      const first = this.count;
+      let faded = false;
+      let s = u.u0;
+      const end = u.u0 + u.len;
+      while (s < end) {
+        const fd = anyWallFade ? (this.wallFade[run.y * w + s] ?? 1) : 1;
+        let e = s;
+        if (anyWallFade) while (e + 1 < end && (this.wallFade[run.y * w + e + 1] ?? 1) === fd) e++;
+        else e = end - 1;
+        if (fd < 1) faded = true;
+        const it = this.nextItem();
+        it.kind = K_WALL;
+        it.base = run.y + 1;
+        it.x0 = proj.px(s) - BOUNDS_PAD;
+        it.x1 = proj.px(e + 1) + BOUNDS_PAD;
+        it.y0 = ry0 - BOUNDS_PAD;
+        it.y1 = ry1 + BOUNDS_PAD;
+        it.idx = u.ri;
+        it.tx = s;
+        it.ty = run.y;
+        it.len = e - s + 1;
+        it.u0 = u.u0;
+        it.ulen = u.len;
+        it.state = u.state;
+        it.alpha = fd;
+        it.canopy = false;
+        it.dyn = false;
+        it.sig = mixHash(mixHash(mixHash(HASH_SEED, 1 + u.ri), u.u0), u.state);
+        st.wallSegs++;
+        s = e + 1;
+      }
+      if (faded) for (let k = first; k < this.count; k++) this.items[k]!.dyn = true;
+    }
     // objects and doors
+    const rect = this.tRect;
     for (let i = 0; i < world.objects.length; i++) {
       const o = world.objects[i]!;
       const d = o.def;
       if (o.height <= 0.02 && d.type !== "door") continue; // rugs: floor layer
       const isDoor = d.type === "door";
-      const hgt = isDoor && o.state === "open" ? Math.max(o.height, 1.4) : o.height;
-      const extra = d.type === "tree" ? Math.max(d.w, d.h) * 0.9 : 0;
-      const x0 = proj.px(d.x) - extra * T * 0.2;
-      const x1 = proj.px(d.x + d.w) + extra * T * 0.2;
-      const y0 = proj.py(d.y, hgt) - extra * T;
-      const y1 = proj.py(d.y + d.h, 0);
-      if (x1 < view.x0 || x0 > view.x1 || y1 < view.y0 || y0 > view.y1) continue;
+      objectRect(proj, o, rect, isDoor ? Math.max(o.height, 1.4) : o.height);
       const it = this.nextItem();
       it.kind = isDoor ? K_DOOR : K_OBJ;
       it.base = d.y + d.h;
-      it.x0 = x0;
-      it.x1 = x1;
-      it.y0 = y0;
-      it.y1 = y1;
+      it.x0 = rect.x0;
+      it.x1 = rect.x1;
+      it.y0 = rect.y0;
+      it.y1 = rect.y1;
       it.idx = i;
       it.state = fog.at(Math.floor(d.x + d.w / 2), Math.floor(d.y + d.h / 2));
-      it.alpha = this.objFade.get(o.id) ?? 1;
+      it.alpha = this.objFade[i] ?? 1;
+      it.canopy = d.type === "tree";
+      it.dyn = it.alpha < 1;
+      it.sig = mixHash(mixHash(mixHash(HASH_SEED, 100000 + i), it.state), o.state === "open" ? 1 : o.state === "closed" ? 2 : 0);
     }
     // seekers (only in visible tiles)
-    const rect = { x0: 0, y0: 0, x1: 0, y1: 0 };
+    const cr = this.pRect; // scratch (the player's rect is rebuilt below)
     for (let i = 0; i < world.seekers.length; i++) {
       const s = world.seekers[i]!;
       const x = lerp(s.px, s.x, env.alpha);
       const y = lerp(s.py, s.y, env.alpha);
       if (fog.at(Math.floor(x), Math.floor(y)) !== FOG_VISIBLE) continue;
-      const fx = proj.px(x);
-      const fy = proj.py(y);
-      characterBounds(proj, fx, fy, seekerLook(s.type).scale, rect);
-      if (rect.x1 < view.x0 || rect.x0 > view.x1 || rect.y1 < view.y0 || rect.y0 > view.y1) continue;
+      characterBounds(proj, proj.px(x), proj.py(y), seekerLook(s.type).scale, cr);
+      if (cr.x1 < view.x0 || cr.x0 > view.x1 || cr.y1 < view.y0 || cr.y0 > view.y1) continue;
       const it = this.nextItem();
       it.kind = K_SEEKER;
       it.base = y;
-      it.x0 = rect.x0;
-      it.y0 = rect.y0;
-      it.x1 = rect.x1;
-      it.y1 = rect.y1;
+      it.x0 = cr.x0;
+      it.y0 = cr.y0;
+      it.x1 = cr.x1;
+      it.y1 = cr.y1;
       it.idx = i;
       it.x = x;
       it.y = y;
       it.moving = Math.hypot(s.x - s.px, s.y - s.py) > 0.0005;
       it.state = FOG_VISIBLE;
       it.alpha = 1;
+      it.canopy = false;
+      it.dyn = true;
     }
     // player
     {
-      const fx = proj.px(env.pip.x);
-      const fy = proj.py(env.pip.y);
-      characterBounds(proj, fx, fy, 1, rect);
+      characterBounds(proj, proj.px(env.pip.x), proj.py(env.pip.y), 1, cr);
       const it = this.nextItem();
       it.kind = K_PLAYER;
       it.base = env.pip.y;
-      it.x0 = rect.x0;
-      it.y0 = rect.y0;
-      it.x1 = rect.x1;
-      it.y1 = rect.y1;
+      it.x0 = cr.x0;
+      it.y0 = cr.y0;
+      it.x1 = cr.x1;
+      it.y1 = cr.y1;
       it.idx = 0;
       it.x = env.pip.x;
       it.y = env.pip.y;
       it.moving = world.player.moving;
       it.state = FOG_VISIBLE;
       it.alpha = 1;
+      it.canopy = false;
+      it.dyn = true;
     }
     const list = this.sortBuf;
     list.length = this.count;
     for (let i = 0; i < this.count; i++) list[i] = this.items[i]!;
-    list.sort((a, b) => a.base - b.base || a.kind - b.kind);
-    this.stats.items = this.count;
-    for (let i = 0; i < this.count; i++) {
+    list.sort(byBaseKind);
+    st.items = this.count;
+    // draw: static baselines from cached pieces / bands, characters and fading things directly, in y order
+    const groups = this.groups;
+    const seq = this.seq; // >= 0: group index, < 0: -(list index + 1) of a character
+    seq.length = 0;
+    let gn = 0;
+    let i = 0;
+    while (i < this.count) {
       const it = list[i]!;
-      const ia = it.alpha;
-      if (ia < 0.999) ctx.globalAlpha = ia;
-      switch (it.kind) {
-        case K_WALL:
-          this.drawWall(env, this.runs[it.idx]!, it.tx, it.len, it.state);
-          break;
-        case K_OBJ:
-          drawObject(env, world.objects[it.idx]!, it.state);
-          break;
-        case K_DOOR:
-          drawDoor(env, world.objects[it.idx]!, it.state);
-          break;
-        case K_SEEKER: {
-          const s = world.seekers[it.idx]!;
-          drawSeeker(ctx, proj, proj.px(it.x), proj.py(it.y), s.type, s.facing, it.moving, s.state === "sleep", env.t);
-          break;
-        }
-        default:
-          drawPip(ctx, proj, proj.px(it.x), proj.py(it.y), world.player.facing, it.moving, world.player.gait, env.t);
+      if (it.kind >= K_SEEKER) {
+        seq.push(-(i + 1));
+        i++;
+        continue;
       }
-      if (ia < 0.999) ctx.globalAlpha = 1;
-    }
-    // outlines for covered characters
-    for (let i = 0; i < this.count; i++) {
-      const it = list[i]!;
-      if (it.kind !== K_SEEKER && it.kind !== K_PLAYER) continue;
-      let cover: number;
-      if (it.kind === K_PLAYER) cover = this.pipOcc;
+      let j = i + 1;
+      while (j < this.count && list[j]!.kind <= K_DOOR && list[j]!.base === it.base) j++;
+      let g = groups[gn];
+      if (!g) {
+        g = { i: 0, j: 0, ok: false, hasDyn: true, pieces: [] };
+        groups[gn] = g;
+      }
+      g.i = i;
+      g.j = j;
+      if (env.layers) g.ok = this.prepareBaseline(env, list, i, j, g);
       else {
-        const id = world.seekers[it.idx]!.id;
+        g.ok = false;
+        g.hasDyn = true;
+        g.pieces.length = 0;
+      }
+      seq.push(gn++);
+      i = j;
+    }
+    let s = 0;
+    while (s < seq.length) {
+      const e = seq[s]!;
+      if (e < 0) {
+        this.drawCharacter(env, list[-e - 1]!);
+        s++;
+        continue;
+      }
+      let t = s;
+      while (t + 1 < seq.length && seq[t + 1]! >= 0 && !groups[seq[t]!]!.hasDyn) t++;
+      this.drawBand(env, list, groups, seq[s]!, seq[t]!);
+      s = t + 1;
+    }
+    // markers for covered characters (drawn over everything)
+    for (let k = 0; k < this.count; k++) {
+      const it = list[k]!;
+      if (it.kind !== K_SEEKER && it.kind !== K_PLAYER) continue;
+      let strength: number;
+      let fill = "#fff2b8";
+      let scale = 1;
+      let dogDir = 0;
+      if (it.kind === K_PLAYER) strength = this.pipOcc;
+      else {
+        const s = world.seekers[it.idx]!;
         let covered = 0;
-        for (let j = i + 1; j < this.count; j++) {
-          const o = list[j]!;
-          if (o.kind > K_DOOR || o.base <= it.base) continue;
+        for (let m = k + 1; m < this.count; m++) {
+          const o = list[m]!;
+          if (o.kind > K_DOOR || o.base <= it.base || o.alpha <= SILHOUETTE_MIN_COVER_ALPHA) continue;
+          if (proj.heightPx === 0 && !o.canopy) continue;
           if (rectsOverlap(o, it)) {
             covered = 1;
             break;
           }
         }
-        const cur = this.seekerOcc.get(id) ?? 0;
-        cover = cur + (covered - cur) * (1 - Math.exp(-dt / 0.07));
-        this.seekerOcc.set(id, cover);
+        const cur = this.seekerOcc.get(s.id) ?? 0;
+        strength = cur + (covered - cur) * (1 - Math.exp(-dt / OCCLUDE_TIME_CONST));
+        if (Math.abs(strength - covered) < 0.01) strength = covered;
+        this.seekerOcc.set(s.id, strength);
+        const look = seekerLook(s.type);
+        fill = look.body;
+        scale = look.scale;
+        dogDir = s.type === "dog" ? (Math.cos(s.facing) >= 0 ? 1 : -1) : 0;
       }
-      if (cover > 0.05 && proj.heightPx > 0) {
-        const scale = it.kind === K_SEEKER ? seekerLook(world.seekers[it.idx]!.type).scale : 1;
-        drawSilhouette(ctx, proj, proj.px(it.x), proj.py(it.y), scale, Math.min(0.85, cover));
+      if (strength > 0.02) drawSilhouette(ctx, proj, proj.px(it.x), proj.py(it.y), scale, Math.min(1, strength), fill, dogDir);
+    }
+  }
+
+  private drawCharacter(env: Env, it: Item): void {
+    const { ctx, proj, world } = env;
+    if (it.kind === K_SEEKER) {
+      const s = world.seekers[it.idx]!;
+      drawSeeker(ctx, proj, proj.px(it.x), proj.py(it.y), s.type, s.facing, it.moving, s.state === "sleep", env.t);
+    } else drawPip(ctx, proj, proj.px(it.x), proj.py(it.y), world.player.facing, it.moving, world.player.gait, env.t);
+  }
+
+  /**
+   * Resolve the cached pieces of one baseline (list[i..j) = its static things in draw order).
+   * Returns false when a piece needs painting but the budget is used up (draw the baseline directly).
+   */
+  private prepareBaseline(env: Env, list: Item[], i: number, j: number, g: Group): boolean {
+    const { view } = env;
+    const layers = env.layers!;
+    g.pieces.length = 0;
+    g.hasDyn = false;
+    const pw = layers.pieceW;
+    let kMin = Infinity;
+    let kMax = -Infinity;
+    for (let m = i; m < j; m++) {
+      const it = list[m]!;
+      if (it.dyn) {
+        if (inView(it, view)) g.hasDyn = true;
+        continue;
+      }
+      const k0 = Math.floor(it.x0 / pw);
+      const k1 = Math.floor((it.x1 - 1e-6) / pw);
+      if (k0 < kMin) kMin = k0;
+      if (k1 > kMax) kMax = k1;
+    }
+    if (kMin > kMax) return true;
+    const n = kMax - kMin + 1;
+    const pc = this.pieceScratch(n);
+    for (let m = i; m < j; m++) {
+      const it = list[m]!;
+      if (it.dyn) continue;
+      const k0 = Math.floor(it.x0 / pw) - kMin;
+      const k1 = Math.floor((it.x1 - 1e-6) / pw) - kMin;
+      for (let k = k0; k <= k1; k++) {
+        pc.sig[k] = mixHash(pc.sig[k]!, it.sig);
+        if (it.y0 < pc.y0[k]!) pc.y0[k] = it.y0;
+        if (it.y1 > pc.y1[k]!) pc.y1[k] = it.y1;
+        const l = Math.max(it.x0, (k + kMin) * pw);
+        const r = Math.min(it.x1, (k + kMin + 1) * pw);
+        if (l < pc.x0[k]!) pc.x0[k] = l;
+        if (r > pc.x1[k]!) pc.x1[k] = r;
       }
     }
+    const baseKey = Math.round(list[i]!.base * 64) * 4096;
+    for (let k = 0; k < n; k++) {
+      if (pc.y1[k]! === -Infinity) continue;
+      const x0 = pc.x0[k]!;
+      const x1 = pc.x1[k]!;
+      const y0 = pc.y0[k]!;
+      const y1 = pc.y1[k]!;
+      if (x1 < view.x0 || x0 > view.x1 || y1 < view.y0 || y0 > view.y1) continue;
+      const key = baseKey + (k + kMin + 2048);
+      const sig = mixHash(pc.sig[k]!, j - i);
+      let p = layers.ready(key, sig, x0, y0, x1, y1);
+      if (!p) {
+        if (!layers.canPaint()) return false;
+        const col = k + kMin;
+        p = layers.paint(key, sig, x0, y0, x1, y1, (c) => this.paintStatics(env, c, list, i, j, col * pw, (col + 1) * pw));
+        if (!p) return false;
+      }
+      g.pieces.push(p);
+    }
+    return true;
+  }
+
+  /**
+   * Draw a run of baselines that has nothing dynamic between them. With two or more cached baselines the run is
+   * merged into one cached band (one blit instead of one per baseline); fading things of the last baseline go on top.
+   */
+  private drawBand(env: Env, list: Item[], groups: Group[], a: number, b: number): void {
+    const { ctx } = env;
+    const st = this.stats;
+    const bands = env.bands;
+    let allCached = true;
+    let pieces = 0;
+    for (let g = a; g <= b; g++) {
+      if (!groups[g]!.ok) allCached = false;
+      pieces += groups[g]!.pieces.length;
+    }
+    if (bands && allCached && pieces > 1) {
+      let sig = HASH_SEED;
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      for (let g = a; g <= b; g++)
+        for (const p of groups[g]!.pieces) {
+          sig = mixHash(mixHash(mixHash(sig, p.sig), Math.round(p.x)), Math.round(p.y));
+          if (p.x < x0) x0 = p.x;
+          if (p.y < y0) y0 = p.y;
+          if (p.x + p.w > x1) x1 = p.x + p.w;
+          if (p.y + p.h > y1) y1 = p.y + p.h;
+        }
+      const key = Math.round(list[groups[a]!.i]!.base * 64) * 65536 + Math.round(list[groups[b]!.i]!.base * 64);
+      let band = bands.ready(key, sig, x0, y0, x1, y1);
+      if (!band && bands.canPaint())
+        band = bands.paint(key, sig, x0, y0, x1, y1, (c) => {
+          for (let g = a; g <= b; g++) for (const p of groups[g]!.pieces) c.drawImage(p.img, p.x, p.y, p.w, p.h);
+        });
+      if (band) {
+        ctx.drawImage(band.img, band.x, band.y, band.w, band.h);
+        st.pieces++;
+        this.drawFading(env, list, groups[b]!.i, groups[b]!.j);
+        return;
+      }
+    }
+    for (let g = a; g <= b; g++) {
+      const gr = groups[g]!;
+      if (gr.ok)
+        for (const p of gr.pieces) {
+          ctx.drawImage(p.img, p.x, p.y, p.w, p.h);
+          st.pieces++;
+        }
+      else this.paintStatics(env, ctx, list, gr.i, gr.j, -Infinity, Infinity, true);
+      this.drawFading(env, list, gr.i, gr.j);
+    }
+  }
+
+  /** Fading things of list[i..j), drawn directly with their alpha. */
+  private drawFading(env: Env, list: Item[], i: number, j: number): void {
+    const { ctx, view } = env;
+    let curAlpha = 1;
+    for (let m = i; m < j; m++) {
+      const it = list[m]!;
+      if (!it.dyn || !inView(it, view)) continue;
+      if (it.alpha !== curAlpha) {
+        ctx.globalAlpha = it.alpha;
+        curAlpha = it.alpha;
+      }
+      this.paintItem(env, it, true);
+      this.stats.direct++;
+    }
+    if (curAlpha !== 1) ctx.globalAlpha = 1;
+  }
+
+  /** Paint the non-fading things of list[i..j) that overlap [colX0, colX1) into `c`. `direct` = main canvas (cull by view). */
+  private paintStatics(env: Env, c: Ctx, list: Item[], i: number, j: number, colX0: number, colX1: number, direct = false): void {
+    const e = c === env.ctx ? env : { ...env, ctx: c };
+    for (let m = i; m < j; m++) {
+      const it = list[m]!;
+      if (it.dyn || it.x1 <= colX0 || it.x0 >= colX1) continue;
+      if (direct) {
+        if (!inView(it, env.view)) continue;
+        this.stats.direct++;
+      }
+      this.paintItem(e, it, false);
+    }
+  }
+
+  private paintItem(env: Env, it: Item, segment: boolean): void {
+    if (it.kind === K_WALL) {
+      if (segment) this.drawWall(env, this.runs[it.idx]!, it.tx, it.len, it.state);
+      else this.drawWall(env, this.runs[it.idx]!, it.u0, it.ulen, it.state);
+      return;
+    }
+    const o = env.world.objects[it.idx]!;
+    if (it.kind === K_DOOR) drawDoor(env, o, it.state);
+    else drawObject(env, o, it.state);
+  }
+
+  private scratch = { sig: new Uint32Array(0), x0: new Float64Array(0), x1: new Float64Array(0), y0: new Float64Array(0), y1: new Float64Array(0) };
+  private groups: Group[] = [];
+  private seq: number[] = [];
+  private pieceScratch(n: number) {
+    let s = this.scratch;
+    if (s.sig.length < n) {
+      s = { sig: new Uint32Array(n * 2), x0: new Float64Array(n * 2), x1: new Float64Array(n * 2), y0: new Float64Array(n * 2), y1: new Float64Array(n * 2) };
+      this.scratch = s;
+    }
+    s.sig.fill(HASH_SEED, 0, n);
+    s.x0.fill(Infinity, 0, n);
+    s.y0.fill(Infinity, 0, n);
+    s.x1.fill(-Infinity, 0, n);
+    s.y1.fill(-Infinity, 0, n);
+    return s;
   }
 
   private drawWall(env: Env, run: WallRun, tx: number, len: number, state: FogState): void {

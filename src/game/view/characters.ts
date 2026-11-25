@@ -223,20 +223,56 @@ export function drawSeeker(
   }
 }
 
-/** Thin outline of a character body (used when something stands in front of it). */
-export function drawSilhouette(ctx: Ctx, proj: Projection, fx: number, fy: number, scale: number, alpha: number): void {
-  const u = (proj.tileScreenW / 64) * scale;
-  ctx.globalAlpha = alpha;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1.8 * u;
+/** Path of the covered-character marker: the body, head and legs as one shape (feet at fx, fy). */
+function silhouettePath(ctx: Ctx, proj: Projection, fx: number, fy: number, u: number, dogDir: number): void {
+  ctx.beginPath();
   if (proj.heightPx === 0) {
-    ellipse(ctx, fx, fy, 19 * u, 19 * u);
-    ctx.stroke();
+    ctx.moveTo(fx + 19 * u, fy);
+    ctx.arc(fx, fy, 19 * u, 0, Math.PI * 2);
+  } else if (dogDir !== 0) {
+    ctx.ellipse(fx, fy - 12 * u, 17 * u, 9 * u, 0, 0, Math.PI * 2);
+    ctx.moveTo(fx + dogDir * 24 * u, fy - 18 * u);
+    ctx.ellipse(fx + dogDir * 16 * u, fy - 18 * u, 8 * u, 7.5 * u, 0, 0, Math.PI * 2);
+    ctx.rect(fx - 12 * u, fy - 7 * u, 4 * u, 8 * u);
+    ctx.rect(fx + 8 * u, fy - 7 * u, 4 * u, 8 * u);
   } else {
-    roundRectPath(ctx, fx - 14 * u, fy - 38 * u, 28 * u, 38 * u, 8 * u);
-    ctx.stroke();
-    ellipse(ctx, fx, fy - 46 * u, 12 * u, 12 * u);
-    ctx.stroke();
+    ctx.rect(fx - 9 * u, fy - 11 * u, 7 * u, 12 * u);
+    ctx.rect(fx + 2 * u, fy - 11 * u, 7 * u, 12 * u);
+    const r = 8 * u;
+    const x = fx - 14 * u;
+    const y = fy - 37 * u;
+    const w = 28 * u;
+    const h = 29 * u;
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.moveTo(fx + 12 * u, fy - 46 * u);
+    ctx.ellipse(fx, fy - 46 * u, 12 * u, 12 * u, 0, 0, Math.PI * 2);
   }
+}
+
+/**
+ * Marker for a character that something stands in front of: a 40% filled body with a thin light outline
+ * on a darker keyline, so it reads on any background without competing with the scene.
+ * `strength` 0..1 fades the whole marker. `dogDir` is +1/-1 for dogs (facing right/left) and 0 for people.
+ */
+export function drawSilhouette(ctx: Ctx, proj: Projection, fx: number, fy: number, scale: number, strength: number, fill = "#fff2b8", dogDir = 0): void {
+  const u = (proj.tileScreenW / 64) * scale;
+  silhouettePath(ctx, proj, fx, fy, u, dogDir);
+  ctx.globalAlpha = 0.4 * strength;
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.globalAlpha = 0.55 * strength;
+  ctx.strokeStyle = "#1a1020";
+  ctx.lineWidth = 3.2 * u;
+  ctx.lineJoin = "round";
+  ctx.stroke();
+  ctx.globalAlpha = 0.95 * strength;
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 1.5 * u;
+  ctx.stroke();
   ctx.globalAlpha = 1;
 }

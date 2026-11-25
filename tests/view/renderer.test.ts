@@ -43,10 +43,11 @@ describe("GameViewImpl (mock 2D context)", () => {
     expect(view.getProjection()).toBe("oblique");
   });
 
-  it("caches floor chunks: later frames at the same zoom build nothing new", () => {
+  it("caches floor chunks and stand layers: once warm, later frames at the same zoom build nothing new", () => {
     const { fc, view, world } = setup();
     view.skipIntro();
-    view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    // layer pieces are painted on a per-frame budget, so give the cache a few frames to fill
+    for (let i = 0; i < 30; i++) view.frame(world, 0, 1 / 60, NO_CTRL, []);
     const n = fc.offscreen.length;
     for (let i = 0; i < 20; i++) view.frame(world, 0, 1 / 60, NO_CTRL, []);
     expect(fc.offscreen.length).toBe(n);
@@ -79,6 +80,46 @@ describe("GameViewImpl (mock 2D context)", () => {
     expect(view.isIntroActive()).toBe(true);
     view.skipIntro();
     expect(view.isIntroActive()).toBe(false);
+  });
+
+  it("host-style skipIntro on the first key centres the camera on Pip at once (no pan left)", () => {
+    const { view, world, level } = setup();
+    world.player.x = world.player.px = 20;
+    world.player.y = world.player.py = 12;
+    view.setLevel(level, world);
+    view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    const before = view.screenToWorld(640, 360);
+    expect(Math.hypot(before.x - 20, before.y - 12)).toBeGreaterThan(3); // the pan starts at Home Base (1..4, 21..23)
+    view.skipIntro(); // what the host does on the first key press
+    expect(view.isIntroActive()).toBe(false);
+    view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    const c = view.screenToWorld(640, 360);
+    expect(Math.hypot(c.x - 20, c.y - 12)).toBeLessThan(0.05);
+  });
+
+  it("a key press on the page skips the intro (after a short grace so the starting click does not)", () => {
+    const listeners = new Map<string, (e: Event) => void>();
+    const g = globalThis as unknown as { window?: unknown };
+    const had = "window" in g;
+    const prev = g.window;
+    g.window = { addEventListener: (k: string, fn: (e: Event) => void) => listeners.set(k, fn), removeEventListener: () => undefined };
+    try {
+      const { view, world } = setup();
+      const key = listeners.get("keydown")!;
+      expect(key).toBeTypeOf("function");
+      view.frame(world, 0, 1 / 60, NO_CTRL, []);
+      key({ repeat: false } as unknown as Event); // within the grace: ignored
+      expect(view.isIntroActive()).toBe(true);
+      for (let i = 0; i < 20; i++) view.frame(world, 0, 1 / 60, NO_CTRL, []);
+      key({ repeat: true } as unknown as Event); // auto-repeat never skips
+      expect(view.isIntroActive()).toBe(true);
+      key({ repeat: false } as unknown as Event);
+      expect(view.isIntroActive()).toBe(false);
+      view.dispose();
+    } finally {
+      if (had) g.window = prev;
+      else delete g.window;
+    }
   });
 
   it("screenToWorld inverts the camera transform (Pip at the viewport centre after the intro)", () => {
@@ -151,6 +192,46 @@ describe("GameViewImpl (mock 2D context)", () => {
     fc.main.reset();
     view.frame(world, 0, 1 / 60, NO_CTRL, []);
     expect(fc.main.calls.get("ellipse") ?? 0).toBeGreaterThan(hidden);
+  });
+
+  it("Pip standing behind a tree canopy gets the silhouette drawn on top of everything", () => {
+    const { fc, view, world, level } = setup();
+    world.player.x = world.player.px = 37.5; // test tree: x 37, y 10, height 2; its canopy reaches up over row 8
+    world.player.y = world.player.py = 8.6;
+    view.setLevel(level, world);
+    view.skipIntro();
+    const scene = (view as unknown as { scene: { playerCover: number } }).scene;
+    for (let i = 0; i < 40; i++) view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    expect(scene.playerCover).toBeGreaterThan(0.95);
+    fc.main.reset();
+    view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    const strokesCovered = fc.main.calls.get("stroke") ?? 0;
+    const tree = world.objects.find((o) => o.id === "tree")!;
+    tree.def = { ...tree.def, y: 2 }; // same camera, but the tree now stands north of Pip (behind him)
+    for (let i = 0; i < 40; i++) view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    expect(scene.playerCover).toBe(0);
+    fc.main.reset();
+    view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    expect(strokesCovered).toBeGreaterThanOrEqual((fc.main.calls.get("stroke") ?? 0) + 2); // keyline + light outline
+  });
+
+  it("a seeker in a visible room standing behind a wardrobe gets the marker, which goes away when he steps out", () => {
+    const { view, world, level } = setup();
+    world.player.x = world.player.px = 10.5;
+    world.player.y = world.player.py = 14.5;
+    const dog = world.seekers.find((s) => s.id === "s3")!;
+    dog.x = dog.px = 12.9; // just north of the wardrobe (x 12..14, y 13..14, height 1.7)
+    dog.y = dog.py = 12.6;
+    world.roomVis["bedroom"] = "visible";
+    view.setLevel(level, world);
+    view.skipIntro();
+    const scene = (view as unknown as { scene: { seekerOcc: Map<string, number> } }).scene;
+    for (let i = 0; i < 40; i++) view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    expect(scene.seekerOcc.get("s3")).toBe(1);
+    // not covered once he steps out in front of it
+    dog.y = dog.py = 15.5;
+    for (let i = 0; i < 40; i++) view.frame(world, 0, 1 / 60, NO_CTRL, []);
+    expect(scene.seekerOcc.get("s3")).toBe(0);
   });
 
   it("dispose is safe and frame after dispose is a no-op", () => {

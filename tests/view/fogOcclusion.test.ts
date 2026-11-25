@@ -1,20 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-  FOG_REMEMBERED, FOG_UNKNOWN, FOG_VISIBLE, FogMap, OCCLUDE_ALPHA, OCCLUDE_RADIUS, castRay, conePolygon, fogColor, fogOverlayAlpha,
+  FOG_REMEMBERED, FOG_UNKNOWN, FOG_VISIBLE, FogMap, OCCLUDE_ALPHA, castRay, conePolygon, fogColor, fogOverlayAlpha,
   fogStateOf, occlusionTarget, rectsOverlap, tweenAlpha,
 } from "../../src/game/view";
 import { makeTestLevel, makeWorld } from "./helpers";
 
 describe("occlusion alpha", () => {
-  it("fades only things in front that overlap and are within 2.2 tiles", () => {
-    expect(occlusionTarget(1, true, true)).toBe(OCCLUDE_ALPHA);
-    expect(occlusionTarget(OCCLUDE_RADIUS, true, true)).toBe(OCCLUDE_ALPHA);
-    expect(occlusionTarget(OCCLUDE_RADIUS + 0.01, true, true)).toBe(1);
-    expect(occlusionTarget(1, false, true)).toBe(1);
-    expect(occlusionTarget(1, true, false)).toBe(1);
+  it("fades things in front that overlap, at any distance; leaves the rest", () => {
+    expect(occlusionTarget(true, true)).toBe(OCCLUDE_ALPHA);
+    expect(occlusionTarget(false, true)).toBe(1);
+    expect(occlusionTarget(true, false)).toBe(1);
+    expect(occlusionTarget(false, false)).toBe(1);
     expect(OCCLUDE_ALPHA).toBeCloseTo(0.35, 9);
   });
-
   it("tweens smoothly (no pop) and monotonically", () => {
     let a = 1;
     const seq: number[] = [];
