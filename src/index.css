@@ -35,3 +35,22 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Sneakaboo: the game is the whole page. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #0b0f1d;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  touch-action: none;
+}

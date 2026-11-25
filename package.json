@@ -1,40 +1,43 @@
 {
-    "name":  "sneakaboo",
-    "private":  true,
-    "version":  "0.0.0",
-    "type":  "module",
-    "scripts":  {
-                    "dev":  "vite",
-                    "build":  "vite build",
-                    "preview":  "vite preview",
-                    "typecheck":  "tsc --noEmit",
-                    "lint":  "eslint src tests",
-                    "test":  "vitest run",
-                    "test:watch":  "vitest",
-                    "format":  "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.ts\"",
-                    "validate-levels":  "tsx tools/validate-levels/index.ts"
-                },
-    "dependencies":  {
-                         "@base44/sdk":  "^0.8.40",
-                         "@base44/vite-plugin":  "^1.0.30",
-                         "lucide-react":  "^0.475.0",
-                         "react":  "^18.2.0",
-                         "react-dom":  "^18.2.0",
-                         "zod":  "^4.6.7"
-                     },
-    "devDependencies":  {
-                            "@eslint/js":  "^10.0.1",
-                            "@vitejs/plugin-react":  "^4.3.4",
-                            "autoprefixer":  "^10.4.20",
-                            "eslint":  "^10.15.0",
-                            "globals":  "^17.14.0",
-                            "postcss":  "^8.5.3",
-                            "prettier":  "^3.10.1",
-                            "tailwindcss":  "^3.4.17",
-                            "tsx":  "^4.23.15",
-                            "typescript":  "^6.0.3",
-                            "typescript-eslint":  "^8.74.0",
-                            "vite":  "^6.1.0",
-                            "vitest":  "^5.1.1"
-                        }
+    "name": "sneakaboo",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint src tests",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.ts\"",
+        "validate-levels": "tsx tools/validate-levels/index.ts"
+    },
+    "dependencies": {
+        "@base44/sdk": "^0.8.40",
+        "@base44/vite-plugin": "^1.0.30",
+        "lucide-react": "^0.475.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "zod": "^4.6.7"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/node": "^26.6.10",
+        "@types/react": "^19.3.2",
+        "@types/react-dom": "^19.3.0",
+        "@vitejs/plugin-react": "^4.3.4",
+        "autoprefixer": "^10.4.20",
+        "eslint": "^10.15.0",
+        "globals": "^17.14.0",
+        "postcss": "^8.5.3",
+        "prettier": "^3.10.1",
+        "tailwindcss": "^3.4.17",
+        "tsx": "^4.23.15",
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.74.0",
+        "vite": "^6.1.0",
+        "vitest": "^5.1.1"
+    }
 }

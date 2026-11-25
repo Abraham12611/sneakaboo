@@ -1,0 +1,38 @@
+{
+  "v": 1,
+  "id": "_test_room",
+  "name": "Test Room",
+  "author": "official",
+  "archetype": "T-test",
+  "seed": 1,
+  "timeLimit": 60,
+  "par": 30,
+  "size": { "w": 14, "h": 10 },
+  "tiles": [
+    "##############",
+    "#.....=......#",
+    "#.....=......#",
+    "w.....=......#",
+    "#............#",
+    "#............#",
+    "#.....=......#",
+    "#.....=......#",
+    "#.....=......#",
+    "##############"
+  ],
+  "rooms": [
+    {"id":"room_a","type":"living","rects":[[1,1,5,8]],"floorTint":"#4f8a3c","surface":"wood"},
+    {"id":"room_b","type":"kitchen","rects":[[7,1,6,8]],"floorTint":"#2e6da4","surface":"tile"}
+  ],
+  "objects": [
+    {"id":"sofa","type":"sofa","x":1,"y":7,"w":3,"h":1,"color":"#2f5d2a","height":0.9},
+    {"id":"crate","type":"crate","x":9,"y":2,"w":1,"h":1,"color":"#a77b4a"},
+    {"id":"door_mid","type":"door","x":6,"y":4,"w":1,"h":2,"color":"#8b5a2b","state":"open"}
+  ],
+  "seekers": [
+    {"id":"seeker_a","type":"grandma","x":10.5,"y":6.5,"facing":180,"loop":"pingpong","path":[{"x":10.5,"y":6.5,"wait":2,"look":180},{"x":10.5,"y":3.5,"wait":2,"look":0}]}
+  ],
+  "start": { "x": 2.5, "y": 4.5, "facing": 0 },
+  "home": [10, 4, 2, 2],
+  "camera": { "defaultZoom": 1, "minZoom": 0.7, "maxZoom": 1.6 }
+}

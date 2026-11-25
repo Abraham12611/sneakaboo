@@ -1,0 +1,31 @@
+L01 "First Peek"  26x16  archetype A-starter  timeLimit 90s par 45s
+    00000000001111111111222222
+    01234567890123456789012345
+00  hhhhhhhhhhhhhhhhhhhhhhhhhh
+01  h,,h,,,,,,,,,,,,,,,h,,,,,h
+02  h,,###ww###ww##ww###,,,,,h
+03  h,,#qn.UUU=~~=..NBB#,YY,,h
+04  h,,#......+~G....BB#,YY,,h
+05  he,#......+~~.~~.BBw,,,,,h
+06  he,#x.....=~~=~~...#,,,eeh
+07  h,,#=======~~=.WW..#,,,,,h
+08  h,,wp.vv..=~~======####,,h
+09  h,,w..~~~..~~=FCCnRR..w,,h
+10  ,S~...~~~..~~/...M.....HHh
+11  ,~~..ooo.k=~~/.........HHh
+12  h,,#.....k=p.=.cTTTc..#,,h
+13  hYY####ww########ww####,,h
+14  hYYh,,,,,,,,,,,,,,,,,,h,,h
+15  hhhhhhhhhhhhhhhhhhhhhhhhhh
+
+Tiles: # outer wall, = partition, w window, h hedge, . floor, , grass
+Marks: S start, H home, G grandma, M uncle, / open door, + closed door, ~ rug
+Objects: o=sofa v=tv_unit k=bookshelf p=plant F=fridge C=counter n=sink R=stove T=table c=chair B=bed N=nightstand W=wardrobe q=toilet U=tub x=box e=bench Y=tree
+Rooms:
+  bath     bathroom  [4,3,6,4] #7fb7be tile
+  living   living    [4,8,6,5] #4f8a3c wood
+  hall     hall      [11,3,2,10] #b03a2e carpet
+  bedroom  bedroom   [14,3,5,5] #e0a030 carpet
+  kitchen  kitchen   [14,9,8,4] #2e6da4 tile
+  yard     yard      [0,0,26,16] #5a9a4a grass
+

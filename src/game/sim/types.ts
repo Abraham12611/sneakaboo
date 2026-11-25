@@ -47,6 +47,8 @@ export interface PlayerState {
   moving: boolean;
   radius: number; // collision circle, tiles (0.3)
   hidden: boolean; // reserved for phase 3
+  /** Seconds until the next footstep noise (sim-internal cadence timer). */
+  footTimer?: number;
 }
 
 export interface SeekerState {
