@@ -17,6 +17,7 @@ Update this file when a decision is made or a risk changes. Decision ids are per
 | D-009 | Stairs and floors are Tier 1 | Decided | Nov 24 | Levels 7, 9 need them. |
 | D-010 | Art: AI-generated **static** sprites (props, 5-direction character poses) + **code-driven character animation** (bob, lean, squash, shadow). Do not use AI walk-cycle frames. | Provisional (Nov 24) | Nov 24 | art/REPORT.md: props 12/12 usable, characters consistent in 5 views, walk strip marginal. Needs owner sign-off on the look. |
 | D-013 | Repo license: **All rights reserved** (proprietary LICENSE), public repo for visibility only | Decided | Nov 24 | Avoids clones on the stores. Can be relaxed later. |
+| D-014 | Layouts are **real floor plans**: irregular outlines, 4-8 compact rooms per floor, a circulation spine, a yard around the house, one plan per level (12 archetypes). Big spaces only in big buildings and still partitioned. | Decided | Nov 25 | Owner direction after reviewing Robbery Bob layouts. See docs/17. |
 | D-011 | Repo: public GitHub `Abraham12611/sneakaboo`, trunk-based with short branches | Decided | Nov 24 | No secrets in repo. |
 | D-012 | Is a Base44 CLI/code workflow acceptable as "built with Base44"? | Open | | Owner must ask Base44 support or the contest Discord (task P0.5.1). Docs say nothing either way. |
 

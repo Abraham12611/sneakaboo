@@ -1,5 +1,8 @@
 # Levels 1-5
 
+> **Layout rule (Nov 25):** map sizes below are footprints including the yard. Every level uses a different real-house floor plan with several compact rooms, see `docs/17-floor-plan-and-layout-principles.md` (archetype per level in its mapping table). Read any 'big room' as a set of partitioned rooms.
+
+
 Zone 1 **Cozy Cottage** (L1-4): tutorial, small, forgiving. Zone 2 **Suburban House** starts at L5.
 Grid sizes are in tiles. Times are seconds. "Safe window" = guaranteed gap at the main chokepoint.
 

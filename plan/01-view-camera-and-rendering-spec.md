@@ -34,7 +34,8 @@ interface Projection {
 
 ## Oblique rendering rules
 1. **Draw order (back to front):** floor tiles, floor decals (rugs, shadows), cones and noise rings (on the floor plane), then all "standing" things sorted by **baseline y** (walls, furniture, characters, items), then lights and overlays, then HUD.
-2. **Walls:** the north face (inner side) of a wall is drawn as a vertical strip of height `H` (about 1.6 tiles). South-facing walls show their top cap only. West and east walls show a thin side.
+2. **Interior walls are low.** Real floor plans have many rooms (docs/17). Tall partition walls would hide whole rooms in the oblique view, so interior partitions are drawn about 0.5 tile tall (or cut away), and only exterior walls on the far side of the house are full height. Doorways are gaps, windows are blue-glass segments.
+2b. **Walls (detail):** the north face (inner side) of a wall is drawn as a vertical strip of height `H` (about 1.6 tiles). South-facing walls show their top cap only. West and east walls show a thin side.
 3. **Occlusion fade:** objects that are in front of Pip (drawn after him and overlapping him) fade to about 35% alpha inside a radius of about 2.2 tiles. Pip also gets a thin silhouette outline when covered. Same for seekers.
 4. **Hiding:** when Pip hides "under" or "behind" something, his sprite is hidden or masked; the furniture sprite stays opaque.
 5. **Characters:** 8-direction sprites drawn from the same pitched angle (see `plan/06`). A small round shadow ellipse on the floor under every character and item.

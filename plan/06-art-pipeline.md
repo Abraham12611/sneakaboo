@@ -40,6 +40,7 @@ Alternative if the AI sprites drift: keep the generated set as concept, and crea
 | Group | Count | Items |
 |-------|-------|-------|
 | Floors | 8 | wood, dark wood, kitchen tile, carpet, creaky wood, grass, stone path, bathroom tile |
+| Yard | 14 | grass tile, hedge (straight, corner, end), flower beds (3), tree (2), bush, bench, stone path, gate, fence, shed |
 | Walls | 6 | interior wall top + face, exterior wall, window wall, door frames (3 colors), half wall |
 | Doors | 8 | closed, open, locked bronze/silver/gold, jammed, exit (green glow) |
 | Furniture | 50 | sofa, armchair, dining table + chairs, coffee table, bed, nightstand, dresser, wardrobe, closet, bookshelf, desk, fridge, stove, counter, sink, bathtub, toilet, piano, chest, box, barrel, crate, laundry basket, toy chest, lamp, plants (2), rugs (4), paintings (4), mirror, curtains (2), clock, fireplace, TV unit, shoe rack, coat stand, car (garage level) |

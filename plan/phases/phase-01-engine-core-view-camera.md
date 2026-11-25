@@ -24,6 +24,7 @@ Acceptance: Level 1 JSON loads, validates, and Pip cannot walk through walls or 
 - [ ] P1.2.3 Static collision grid: `blocksMove`, `blocksSight`. Objects contribute footprints.
 - [ ] P1.2.4 Circle-vs-grid collision with sliding along walls.
 - [ ] P1.2.5 Level validator v1 (start/home walkable, bounds, schema). CLI `tools/validate-levels`.
+- [ ] P1.2.7 Level JSON ooms (multi-rect), rchetype, and yard fields (see docs/17).
 - [ ] P1.2.6 Greybox Level 1 JSON (from `docs/levels/levels-01-05.md`).
 
 ## P1.3 Projection and render pipeline
@@ -35,6 +36,7 @@ Acceptance: Level 1 renders in the chosen projection with y-sorting, wall faces,
 - [ ] P1.3.5 Occlusion fade (alpha tween) and player silhouette outline.
 - [ ] P1.3.6 Greybox sprite set (colored boxes with heights) so levels are playable before final art.
 - [ ] P1.3.7 Resize and DPR handling, letterboxing with safe-area insets.
+- [ ] P1.3.8 Interior partition walls drawn low (about 0.5 tile face) or as cutaways, tall walls only on the far side; windows (blue glass, optional seeThrough) and doorway gaps per docs/17.
 
 ## P1.4 Camera and zoom
 Acceptance: all camera behaviors in `plan/01` work on desktop and phone; zoom persists.

@@ -1,5 +1,8 @@
 # Levels 16-20
 
+> **Layout rule (Nov 25):** map sizes below are footprints including the yard. Every level uses a different real-house floor plan with several compact rooms, see `docs/17-floor-plan-and-layout-principles.md` (archetype per level in its mapping table). Read any 'big room' as a set of partitioned rooms.
+
+
 Zone 4 **Haunted Manor** ends at L16. Zone 5 **Grand Estate** (L17-20): museum wing, castle tower, final showdown. Highest difficulty: still fair, longer, more routes.
 
 ---

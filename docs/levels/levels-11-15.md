@@ -1,5 +1,8 @@
 # Levels 11-15
 
+> **Layout rule (Nov 25):** map sizes below are footprints including the yard. Every level uses a different real-house floor plan with several compact rooms, see `docs/17-floor-plan-and-layout-principles.md` (archetype per level in its mapping table). Read any 'big room' as a set of partitioned rooms.
+
+
 Zone 3 **Mansion** continues (L11-12). Zone 4 **Haunted Manor** (L13-16): darker palette, flashlights, spooky but cartoonish (ghost-sheet decor, no horror).
 
 ---

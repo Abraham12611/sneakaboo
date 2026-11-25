@@ -19,6 +19,7 @@ Acceptance: atlas for Zones 1-2 imported; a test room matches mockup 04's look.
 - [ ] P4.1.6 Item icons (potion, keys, radio, slippers, stopwatch, trophy, coin, clue notes).
 - [ ] P4.1.7 FX sprites (dust, rings, sparkle, confetti, bubbles).
 - [ ] P4.1.8 Atlas packing, manifest, credits log.
+- [ ] P4.1.10 Yard/garden tileset: grass, hedges, flowers, trees, bench, path, gate, fence, shed; windows and doorway thresholds; room-tinted floor variants (red hall, blue kitchen, green living, orange bedroom).
 - [ ] P4.1.9 Zone 3 set (mansion furniture, library, gallery paintings) as batch 2 once L1-8 are done.
 
 ## P4.2 Level authoring pipeline
@@ -30,6 +31,8 @@ Acceptance: a new level goes from description to validated JSON to playable in u
 - [ ] P4.2.5 Level preview image generator (headless render) for the level-select thumbnails.
 - [ ] P4.2.6 Levels index and pack file.
 - [ ] P4.2.7 CI step: validate every level on each push.
+- [ ] P4.2.8 Floor-plan archetype library (A to L in docs/17) as ASCII templates and JSON, with mirror/rotate variants.
+- [ ] P4.2.9 Layout validator rules from docs/17 (room area and side length, corridor width, doorway width, loops, start/home distance, no repeated archetype in consecutive levels).
 
 ## P4.3 Levels 1-4 (Zone 1: Cozy Cottage)
 Acceptance: each level passes the validator, the bot, and one human playtest. See level docs for goals.

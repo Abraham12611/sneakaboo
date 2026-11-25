@@ -131,7 +131,7 @@ async function main() {
 
 async function loadSprites(renderer: Renderer, scene: Scene, notes: string[]) {
   let files: string[] = [];
-  try { files = await (await fetch('/art-list')).json(); } catch { /* none */ }
+  try { files = await (await fetch(import.meta.env.BASE_URL + 'art-list')).json(); } catch { /* none */ }
   if (!files.length) { notes.push('sprites=1: no art/p0-test/props/*.png found, using placeholders'); return; }
   const loaded: string[] = [];
   const ALIAS: Record<string, string[]> = { crate: ['crate', 'chest'], box: ['box', 'nightstand'], stool: ['stool', 'armchair'], pot: ['pot', 'plant'] };
@@ -139,7 +139,7 @@ async function loadSprites(renderer: Renderer, scene: Scene, notes: string[]) {
     const f = files.find((n) => (ALIAS[kind] ?? [kind]).some((k) => n.toLowerCase().includes(k)));
     if (!f) return;
     const img = new Image();
-    img.src = `/art/p0-test/props/${encodeURIComponent(f)}`;
+    img.src = `${import.meta.env.BASE_URL}art/p0-test/props/${encodeURIComponent(f)}`;
     try { await img.decode(); } catch { return; }
     renderer.addImage(kind, img);
     scene.spriteInfo.set(kind, { w: img.naturalWidth, h: img.naturalHeight });

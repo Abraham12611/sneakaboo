@@ -30,6 +30,17 @@ function artPlugin(): Plugin {
     name: 'sneakaboo-art',
     configureServer(s) { s.middlewares.use(mw); },
     configurePreviewServer(s) { s.middlewares.use(mw); },
+    // Static builds (GitHub Pages): copy the prop PNGs and write the list file.
+    closeBundle() {
+      const src = path.join(artDir, 'p0-test', 'props');
+      const out = path.resolve(import.meta.dirname, 'dist');
+      if (!fs.existsSync(src) || !fs.existsSync(out)) return;
+      const dest = path.join(out, 'art', 'p0-test', 'props');
+      fs.mkdirSync(dest, { recursive: true });
+      const files = fs.readdirSync(src).filter((f) => f.toLowerCase().endsWith('.png'));
+      for (const f of files) fs.copyFileSync(path.join(src, f), path.join(dest, f));
+      fs.writeFileSync(path.join(out, 'art-list'), JSON.stringify(files));
+    },
   };
 }
 
@@ -37,5 +48,6 @@ export default defineConfig({
   plugins: [artPlugin()],
   server: { host: true, port: 5173, strictPort: false },
   preview: { host: true, port: 4173 },
+  base: './',
   build: { target: 'es2022', chunkSizeWarningLimit: 700 },
 });

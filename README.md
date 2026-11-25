@@ -30,6 +30,7 @@ Later: iOS and Android store releases, then a level builder with shareable level
 | 18 | [docs/14-nine-day-contest-plan.md](docs/14-nine-day-contest-plan.md) | Day-by-day plan to Dec 3 |
 | 19 | [docs/15-base44-build-prompts.md](docs/15-base44-build-prompts.md) | Ready-to-paste prompts for Base44 |
 | 20 | [docs/16-mockups.md](docs/16-mockups.md) | Generated mockups with prompts |
+| 21 | [docs/17-floor-plan-and-layout-principles.md](docs/17-floor-plan-and-layout-principles.md) | Real floor plans, 12 archetypes, layout rules (read before designing any level) |
 
 Mockup images are in `mockups/`.
 
